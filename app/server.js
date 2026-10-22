@@ -66,12 +66,14 @@ app.get('/api/topics', async (req, res) => {
   }
 });
 
-// Lay danh sach bai viet theo topic
+// Lay danh sach bai viet theo topic (kem topic_name)
 app.get('/api/posts', async (req, res) => {
   try {
     const [rows] = await dbPool.query(
-      `SELECT posts.*, users.username FROM posts 
+      `SELECT posts.*, users.username, topics.name AS topic_name 
+       FROM posts 
        JOIN users ON posts.user_id = users.id 
+       LEFT JOIN topics ON posts.topic_id = topics.id
        ORDER BY posts.created_at DESC`
     );
     res.json(rows);
@@ -112,6 +114,44 @@ app.get('/api/posts/:id/comments', async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error('[ERROR] Loi truy van comments:', err.message);
+    res.status(500).json({ error: 'Database query failure' });
+  }
+});
+
+// Them binh luan vao bai viet
+app.post('/api/posts/:id/comments', async (req, res) => {
+  const { content, user_id } = req.body;
+  if (!content || !user_id) {
+    return res.status(400).json({ error: 'Vui long nhap noi dung binh luan va nguoi dung' });
+  }
+  try {
+    const [result] = await dbPool.query(
+      'INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)',
+      [req.params.id, user_id, content]
+    );
+    console.log(`[INFO] Binh luan moi tao ID: ${result.insertId} cho post ${req.params.id}`);
+    res.status(201).json({ id: result.insertId, message: 'Binh luan thanh cong' });
+  } catch (err) {
+    console.error('[ERROR] Loi tao binh luan:', err.message);
+    res.status(500).json({ error: 'Database insert failure' });
+  }
+});
+
+// Thong ke forum
+app.get('/api/stats', async (req, res) => {
+  try {
+    const [[postsCount]] = await dbPool.query('SELECT COUNT(*) AS total_posts FROM posts');
+    const [[commentsCount]] = await dbPool.query('SELECT COUNT(*) AS total_comments FROM comments');
+    const [[usersCount]] = await dbPool.query('SELECT COUNT(*) AS total_users FROM users');
+    const [[topicsCount]] = await dbPool.query('SELECT COUNT(*) AS total_topics FROM topics');
+    res.json({
+      totalPosts: postsCount.total_posts || 0,
+      totalComments: commentsCount.total_comments || 0,
+      totalUsers: usersCount.total_users || 0,
+      totalTopics: topicsCount.total_topics || 0
+    });
+  } catch (err) {
+    console.error('[ERROR] Loi truy van stats:', err.message);
     res.status(500).json({ error: 'Database query failure' });
   }
 });
